@@ -34,10 +34,12 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       # Use !Ref function in ImageId property
-      # ImageId: ami-00a1270ce1e007c27
+      # ImageId: ami-0889a44b331db0194
       ImageId: !Ref AmiID
       InstanceType: !Ref InstanceType
       # Add Tags property here
       Tags:
         - Key: Name
           Value: !Join [ '-', [ !Ref InstanceType, webserverjavi ] ]
+        - Key: InstanceType 
+          Value: !Sub ${InstanceType}
