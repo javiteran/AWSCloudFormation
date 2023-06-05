@@ -4,7 +4,7 @@ Resources:
   VPC:
     Type: 'AWS::EC2::VPC'
     Properties:
-      CidrBlock: '10.0.0.0/16'
+      CidrBlock: '10.23.0.0/16'
       EnableDnsSupport: true
       EnableDnsHostnames: true
       Tags:
@@ -28,7 +28,7 @@ Resources:
     Type: 'AWS::EC2::Subnet'
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: '10.0.1.0/24'
+      CidrBlock: '10.23.1.0/24'
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
       Tags:
         - Key: Name
@@ -38,7 +38,7 @@ Resources:
     Type: 'AWS::EC2::Subnet'
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: '10.0.2.0/24'
+      CidrBlock: '10.23.2.0/24'
       AvailabilityZone: !Select [ 1, !GetAZs '' ]
       Tags:
         - Key: Name
@@ -48,7 +48,7 @@ Resources:
     Type: 'AWS::EC2::Subnet'
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: '10.0.3.0/24'
+      CidrBlock: '10.23.3.0/24'
       AvailabilityZone: !Select [ 0, !GetAZs '' ]
       Tags:
         - Key: Name
@@ -58,47 +58,47 @@ Resources:
     Type: 'AWS::EC2::Subnet'
     Properties:
       VpcId: !Ref VPC
-      CidrBlock: '10.0.4.0/24'
+      CidrBlock: '10.23.4.0/24'
       AvailabilityZone: !Select [ 1, !GetAZs '' ]
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-private-b'
 
-  RouteTablePublicA:
+  RouteTablePublic:
     Type: 'AWS::EC2::RouteTable'
     Properties:
       VpcId: !Ref VPC
       Tags:
         - Key: Name
-          Value: !Sub '${AWS::StackName}-public-a-rtb'
+          Value: !Sub '${AWS::StackName}-public-rtb'
 
-  RouteTablePublicB:
-    Type: 'AWS::EC2::RouteTable'
-    Properties:
-      VpcId: !Ref VPC
-      Tags:
-        - Key: Name
-          Value: !Sub '${AWS::StackName}-public-b-rtb'
+  #RouteTablePublicB:
+  #  Type: 'AWS::EC2::RouteTable'
+  #  Properties:
+  #    VpcId: !Ref VPC
+  #    Tags:
+  #      - Key: Name
+  #        Value: !Sub '${AWS::StackName}-public-b-rtb'
           
   DefaultPublicRoute:
     Type: AWS::EC2::Route
     DependsOn: InternetGatewayAttachment
     Properties:
-      RouteTableId: !Ref RouteTablePublicA
+      RouteTableId: !Ref RouteTablePublic
       DestinationCidrBlock: 0.0.0.0/0
       GatewayId: !Ref InternetGateway
 
 
-  PublicSubnet1RouteTableAssociation:
+  PublicSubnetARouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      RouteTableId: !Ref RouteTablePublicA
+      RouteTableId: !Ref RouteTablePublic
       SubnetId: !Ref PublicSubnetA
 
-  PublicSubnet2RouteTableAssociation:
+  PublicSubnetBRouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
     Properties:
-      RouteTableId: !Ref RouteTablePublicA
+      RouteTableId: !Ref RouteTablePublic
       SubnetId: !Ref PublicSubnetB
 
   RouteTablePrivateA:
@@ -108,6 +108,12 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-private-a-rtb'
+  
+  PrivateSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateA
+      SubnetId: !Ref PrivateSubnetA
 
   RouteTablePrivateB:
     Type: 'AWS::EC2::RouteTable'
@@ -117,12 +123,18 @@ Resources:
         - Key: Name
           Value: !Sub '${AWS::StackName}-private-b-rtb'
 
-# Creación de una instancia EC2 ubuntu
-  EC2SecurityGroup:
+  PrivateSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref RouteTablePrivateB
+      SubnetId: !Ref PrivateSubnetB
+
+# Creación de una instancia EC2 ubuntu publica
+  EC2SecurityGroupWeb:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
       VpcId: !Ref VPC
-      GroupDescription: Enable SSH access via port 22 y http 80
+      GroupDescription: SSH 22 y http 80
       SecurityGroupIngress:
         - CidrIp: 0.0.0.0/0
           FromPort: '22'
@@ -132,8 +144,11 @@ Resources:
           FromPort: '80'
           IpProtocol: tcp
           ToPort: '80'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-web-sg'
 
-  EC2Instance:
+  EC2InstanceWeb:
     Type: 'AWS::EC2::Instance'
     Properties:
       ImageId: ami-053b0d53c279acc90 # Ubuntu Server 22.04 LTS
@@ -143,11 +158,55 @@ Resources:
         - AssociatePublicIpAddress: 'true'
           DeviceIndex: '0'
           GroupSet:
-            - !Ref EC2SecurityGroup
+            - !Ref EC2SecurityGroupWeb
           SubnetId: !Ref PublicSubnetA
       Tags:
         - Key: Name
           Value: !Sub '${AWS::StackName}-ub-web'
+
+# Creación de una instancia EC2 ubuntu privada
+  EC2SecurityGroupMySQL:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !Ref VPC
+      GroupDescription: SSH 22 y mysql 3306
+      SecurityGroupIngress:
+        - CidrIp: 0.0.0.0/0
+          FromPort: '22'
+          IpProtocol: tcp
+          ToPort: '22'
+        #MySQL solo desde la instancia EC2 web
+        - SourceSecurityGroupId: !Ref  EC2SecurityGroupWeb
+          IpProtocol: tcp
+          FromPort: '3306'
+          ToPort: '3306'
+        #Regla para el icmp v4/ping
+        - CidrIp: 0.0.0.0/0
+          IpProtocol: icmp
+          FromPort: '-1'
+          ToPort: '-1'
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-mysql-sg'
+
+  EC2InstanceMySQL:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      ImageId: ami-053b0d53c279acc90 # Ubuntu Server 22.04 LTS
+      InstanceType: t2.micro
+      KeyName: vockey
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: 'false'
+          DeviceIndex: '0'
+          GroupSet:
+            - !Ref EC2SecurityGroupMySQL
+          SubnetId: !Ref PrivateSubnetA
+          #Añadir una IP privada fija
+          #PrivateIpAddress:
+          #  !Ref PrivateIP
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-ub-mysql'
 Outputs:
 
   PublicSubnetAIDOutputValue:
@@ -162,5 +221,8 @@ Outputs:
     Description : "Private Subnet A ID"
     Value : !Ref PrivateSubnetA
 
-  InstanceId:
-    Value: !Ref EC2Instance
+  InstanceIdWeb:
+    Value: !Ref EC2InstanceWeb
+
+  InstanceIdMySQL:
+    Value: !Ref EC2InstanceMySQL
